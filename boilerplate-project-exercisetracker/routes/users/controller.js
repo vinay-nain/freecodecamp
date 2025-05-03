@@ -62,57 +62,46 @@ const postExercise = async (req, res, next) => {
     }
 };
 
-const getLogs = async (req, res) => {
+const getLogs = async (req, res, next) => {
     try {
-        const userId = req.params._id;
-        const user = await User.findById(userId);
-
-        if (!user) {
-            return res.status(404).json({ error: "User not found" });
-        }
-
+        const userID = req.params._id;
+        const user = await User.findById(userID);
         let { from, to, limit } = req.query;
-
-        // Parse dates safely
-        const dateFilter = {};
-        if (from && !isNaN(Date.parse(from))) {
-            dateFilter.$gte = new Date(from);
-        }
-        if (to && !isNaN(Date.parse(to))) {
-            dateFilter.$lte = new Date(to);
+        if (!from && !to) {
+            from = new Date("1800-01-01");
+            to = new Date();
         }
 
-        const query = { userId };
-        if (from || to) {
-            query.date = dateFilter;
-        }
-
-        // Parse limit to integer
-        let parsedLimit = parseInt(limit);
-        if (isNaN(parsedLimit) || parsedLimit < 1) {
-            parsedLimit = 0;
-        }
-
-        const exercises = await Exercise.find(query)
-            .select("description duration date -_id")
-            .limit(parsedLimit || undefined)
+        const exercises = await Exercise.find(
+            {
+                userId: userID,
+                date: {
+                    $gte: new Date(from),
+                    $lte: new Date(to),
+                },
+            },
+            "description duration date"
+        )
+            .limit(limit)
             .exec();
-
-        const log = exercises.map((e) => ({
-            description: e.description,
-            duration: e.duration,
-            date: e.date.toDateString(),
-        }));
-
-        res.json({
+        const count = await Exercise.countDocuments({ userId: userID }).exec();
+        let exerciseLog = [];
+        for (let exercise of exercises) {
+            exerciseLog.push({
+                description: String(exercise.description),
+                duration: Number(exercise.duration),
+                date: String(exercise.date.toDateString()),
+            });
+        }
+        const responseLog = {
             username: user.username,
             _id: user._id,
-            count: log.length,
-            log: log,
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Server error" });
+            count: limit || count,
+            log: exerciseLog,
+        };
+        res.status(200).json(responseLog);
+    } catch (error) {
+        console.log(error);
     }
 };
 
